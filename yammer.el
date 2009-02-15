@@ -45,6 +45,8 @@
 ;; yammer-post-message
 ;; yammer-post-buffer-contents
 
+;; set yammer-show-icons to enable mugshots 
+
 (require 'json)
 (require 'oauth)
 (require 'image-file)
