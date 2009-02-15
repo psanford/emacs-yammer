@@ -47,6 +47,7 @@
 
 (require 'json)
 (require 'oauth)
+(require 'image-file)
 
 (defvar yammer-consumer-key nil)
 (defvar yammer-consumer-secret nil)
@@ -145,22 +146,48 @@ Useful when using a sperate buffer for composition, possibly with flyspell."
 (defvar yammer-id-positions nil
   "Ordered list of (position . id) pairs")
 
+(defvar yammer-show-icons nil)
+(defvar yammer-user-list nil)
+(defvar yammer-tmp-dir
+  (expand-file-name (concat "yammer-images") temporary-file-directory))
+
+(defun yammer-fetch-images ()
+  (interactive)
+  (let ((images (mapcar 
+                 (lambda (user) (hash-val 'mugshot_url user)) 
+                 yammer-user-list)))
+    (if (not (file-directory-p yammer-tmp-dir))
+        (make-directory yammer-tmp-dir))
+    (apply 'call-process "wget" nil nil nil
+           (format "--directory-prefix=%s" yammer-tmp-dir)
+           "--no-clobber"
+           "--quiet"
+           images)))
+
+(defun yammer-image-name (url)
+  (string-match ".*/\\(.*\\)$" url)
+  (match-string 1 url))
+
 (defun yammer-list-messages () 
   "List recent posts"
   (interactive)
   (set-buffer (oauth-fetch-url yammer-access-token yammer-list-url))
   (goto-char (point-min))
   (delete-region (point-min) (search-forward "\n\n"))
-  (let ((references) (user-alist) (messages)
+  (let ((references) (messages)
+        (find-user (lambda (id)
+                        (find-if (lambda (user) (eq (hash-val 'id user) id))
+                                 yammer-user-list)))
+        (get-username (lambda (id)
+                        (hash-val 'full_name (funcall find-user id))))
         (raw (json-read-from-string 
             (buffer-substring (point-min) (point-max)))))
     (setq references (assq 'references raw))
-    (setq user-alist 
-          (mapcar (lambda (user)
-                    `(,(hash-val 'id user) . ,(hash-val 'full_name user)))
-                  (remove-if-not (lambda (ref)
-                                   (equal (hash-val 'type ref) "user"))
-                  (cdr references))))
+    (setq yammer-user-list 
+          (remove-if-not (lambda (ref)
+                           (equal (hash-val 'type ref) "user"))
+                         (cdr references)))
+    (if yammer-show-icons (yammer-fetch-images))
     (setq messages (assq 'messages raw))
     (switch-to-buffer (get-buffer-create "*yammer-messages*"))
     (setq buffer-read-only nil)
@@ -172,29 +199,38 @@ Useful when using a sperate buffer for composition, possibly with flyspell."
                    message-alist-by-thread))
        (loop for yamm across (cdr messages) do
              (push `(,(point), (hash-val 'id yamm)) yammer-id-positions)
-             (insert (format "%s%s: %s\n\n\tAbout %s from %s\n------------\n"
-                             (hash-val (hash-val 'sender_id yamm) user-alist)
-                             (let ((reply-id (hash-val 'replied_to_id yamm)) 
-                                   (post))
-                               (or
-                                (when reply-id
-                                  (setq post
-                                        (car (hash-val reply-id
-                                                  message-alist-by-thread)))
-                                  (when post
-                                    (concat 
-                                     " in reply to "
-                                     (hash-val
-                                      (hash-val 'sender_id post)
-                                      user-alist)))) ""))
-                             (replace-regexp-in-string 
-                              "\n"
-                              "\n\t"
-                              (hash-val 'plain (hash-val 'body yamm)))
-                             (yammer-pretty-date 
-                              (yammer-parse-date
-                               (hash-val 'created_at yamm)))
-                             (hash-val 'client_type yamm))))))
+             (when yammer-show-icons 
+               (let ((filename (yammer-image-name
+                                (hash-val 
+                                 'mugshot_url
+                                 (funcall find-user 
+                                          (hash-val 'sender_id yamm))))))
+                 (insert-image-file (concat yammer-tmp-dir "/" filename))
+                 (forward-char)
+                 (insert "\n")))
+             (insert (format 
+                      "%s%s: %s\n\n\tAbout %s from %s\n------------\n"
+                      (funcall get-username (hash-val 'sender_id yamm))
+                      (let ((reply-id (hash-val 'replied_to_id yamm)) 
+                            (post))
+                        (or
+                         (when reply-id
+                           (setq post
+                                 (car (hash-val reply-id
+                                                message-alist-by-thread)))
+                           (when post
+                             (concat 
+                              " in reply to "
+                              (funcall get-username 
+                                       (hash-val 'sender_id post))))) ""))
+                      (replace-regexp-in-string 
+                       "\n"
+                       "\n\t"
+                       (hash-val 'plain (hash-val 'body yamm)))
+                      (yammer-pretty-date 
+                       (yammer-parse-date
+                        (hash-val 'created_at yamm)))
+                      (hash-val 'client_type yamm))))))
   (yammer-messages-mode)
   (beginning-of-buffer))
 
@@ -242,7 +278,8 @@ Useful when using a sperate buffer for composition, possibly with flyspell."
   (define-key yammer-messages-mode-map "R" 'yammer-list-messages)
   (define-key yammer-messages-mode-map "l" 'yammer-list-messages)
   (set (make-local-variable 'font-lock-defaults)
-       '(yammer-font-lock-keywords)))
+       '(yammer-font-lock-keywords 
+         t))) ;; KEYWORDS-ONLY
 
 (defvar yammer-font-lock-keywords-1
   (list
