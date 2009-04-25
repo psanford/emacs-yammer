@@ -166,9 +166,12 @@ Useful when using a sperate buffer for composition, possibly with flyspell."
 
 (defun yammer-fetch-images ()
   (interactive)
-  (let ((images (mapcar 
-                 (lambda (user) (hash-val 'mugshot_url user)) 
-                 yammer-user-list)))
+  (let ((images (remove-if
+                 (lambda (url)
+                   (file-exists-p (concat yammer-tmp-dir "/" (yammer-image-name-url))))
+                 (mapcar
+                  (lambda (user) (hash-val 'mugshot_url user))
+                  yammer-user-list))))
     (if (not (file-directory-p yammer-tmp-dir))
         (make-directory yammer-tmp-dir))
     (apply 'call-process "wget" nil nil nil
