@@ -3,6 +3,8 @@
 ;; Copyright (C) 2009 Peter Sanford
 
 ;; Author: Peter Sanford <peter AT petersdanceparty.com>
+;; Version: 1.01
+;; Keywords: comm
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -38,7 +40,7 @@
 
 ;; Add the following to your emacs init file 
 ;; (require 'yammer)
-;; (yammer-authenticate (user-login-name))
+;; (yammer-authenticate unix-user-name)
 
 ;; Useful functions:
 ;; yammer-list-messages
@@ -46,6 +48,8 @@
 ;; yammer-post-buffer-contents
 
 ;; set yammer-show-icons to enable mugshots 
+
+;;; Code:
 
 (require 'json)
 (require 'oauth)
@@ -82,10 +86,17 @@
           (save-buffer)
           (kill-this-buffer))))
   (unless yammer-access-token
-    (setq yammer-access-token 
-          (oauth-authorize-app yammer-consumer-key yammer-consumer-secret
-                               yammer-request-url yammer-access-url
-                               yammer-user-authorize))
+    (let ((callback
+           (lambda ()
+             (let ((callback-token (read-string
+                                    "Please enter the provided code: ")))
+               (setq access-url
+                     (concat access-url "?callback_token=" callback-token))))))
+      (setq yammer-access-token
+            (oauth-authorize-app yammer-consumer-key yammer-consumer-secret
+                                 yammer-request-url yammer-access-url
+                                 yammer-user-authorize
+                                 callback)))
     (save-excursion
       (find-file (format "/home/%s/.yammer-token" username))
       (end-of-buffer)
@@ -303,6 +314,8 @@ Useful when using a sperate buffer for composition, possibly with flyspell."
   yammer-font-lock-keywords-1
   "Default highlighting for yammer mode")
 
-;; (yammer-authenticate (user-login-name))
+;; (yammer-authenticate unix-user-name)
 
 (provide 'yammer)
+
+;;; yammer.el ends here
