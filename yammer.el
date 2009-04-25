@@ -175,6 +175,8 @@ Useful when using a sperate buffer for composition, possibly with flyspell."
   (interactive)
   (set-buffer (oauth-fetch-url yammer-access-token yammer-list-url))
   (goto-char (point-min))
+  (replace-string "\r" "")
+  (goto-char (point-min))  
   (delete-region (point-min) (search-forward "\n\n"))
   (let ((references) (messages)
         (find-user (lambda (id)
